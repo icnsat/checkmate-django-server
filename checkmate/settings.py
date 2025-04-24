@@ -95,7 +95,7 @@ LOCAL = {
 
 REMOTE = {
     'ENGINE': 'django.db.backends.postgresql',
-    'NAME': BASE_DIR / 'db.postgresql',
+    'NAME': os.getenv('PGDATABASE'),
     'USER': os.getenv('PGUSER'),
     'PASSWORD': os.getenv('PGPASSWORD'),
     'HOST': os.getenv('PGHOST'),
