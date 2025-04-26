@@ -16,6 +16,7 @@ from .serializers import (
     BookingSerializer,
     ReviewSerializer,
     UserAdminSerializer,
+    BookingCreateSerializer,
 )
 from rest_framework.response import Response
 from .permissions import (
@@ -30,12 +31,14 @@ from .permissions import (
 )
 from django.utils import timezone
 from random import randint
-from datetime import timedelta
+from datetime import timedelta, datetime
 from django.urls import reverse
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from decimal import Decimal
 from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework import filters
+from django.db.models import OuterRef, Exists, Q
 
 
 # class HotelViewSet(viewsets.ReadOnlyModelViewSet):
@@ -50,6 +53,108 @@ class HotelViewSet(viewsets.ModelViewSet):
         serializer.save(manager=self.request.user)
 
 
+class SearchHotelsView(views.APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        city_id = request.query_params.get('city_id')
+        check_in = request.query_params.get('check_in')
+        check_out = request.query_params.get('check_out')
+        guests = request.query_params.get('guests')
+
+        if not all([city_id, check_in, check_out, guests]):
+            return Response(
+                {"error": "Missing required parameters"},
+                status=400
+            )
+
+        try:
+            check_in = datetime.strptime(check_in, "%Y-%m-%d").date()
+            check_out = datetime.strptime(check_out, "%Y-%m-%d").date()
+            guests = int(guests)
+        except ValueError:
+            return Response(
+                {"error": "Invalid date or guests format"},
+                status=400
+            )
+
+        if check_in >= check_out:
+            return Response(
+                {"error": "Check-in must be before check-out"},
+                status=400
+            )
+
+        # Комнаты, у которых нет пересекающихся бронирований
+        overlapping_bookings = Booking.objects.filter(
+            room=OuterRef('pk'),
+            start_date__lt=check_out,
+            end_date__gt=check_in
+        )
+
+        available_rooms = Room.objects.annotate(
+            is_booked=Exists(overlapping_bookings)
+        ).filter(
+            is_booked=False,
+            capacity__gte=guests
+        )
+
+        hotels = Hotel.objects.filter(
+            city__id__iexact=city_id,
+            rooms__in=available_rooms
+        ).distinct()
+
+        serializer = HotelSerializer(hotels, many=True)
+        return Response(serializer.data)
+
+
+# class SearchRoomsView(views.APIView):
+#     permission_classes = [permissions.AllowAny]
+
+#     def get(self, request, hotel_id):
+#         check_in = request.query_params.get('check_in')
+#         check_out = request.query_params.get('check_out')
+#         guests = request.query_params.get('guests')
+
+#         if not all([check_in, check_out, guests]):
+#             return Response(
+#                 {"error": "Missing required parameters"},
+#                 status=400
+#             )
+
+#         try:
+#             check_in = datetime.strptime(check_in, "%Y-%m-%d").date()
+#             check_out = datetime.strptime(check_out, "%Y-%m-%d").date()
+#             guests = int(guests)
+#         except ValueError:
+#             return Response(
+#                 {"error": "Invalid date or guests format"},
+#                 status=400
+#             )
+
+#         if check_in >= check_out:
+#             return Response(
+#                 {"error": "Check-in must be before check-out"},
+#                 status=400
+#             )
+
+#         overlapping_bookings = Booking.objects.filter(
+#             room=OuterRef('pk'),
+#             start_date__lt=check_out,
+#             end_date__gt=check_in
+#         )
+
+#         available_rooms = Room.objects.annotate(
+#             is_booked=Exists(overlapping_bookings)
+#         ).filter(
+#             is_booked=False,
+#             capacity__gte=guests,
+#             hotel_id=hotel_id  # фильтрация по отелю
+#         )
+
+#         serializer = RoomSerializer(available_rooms, many=True)
+#         return Response(serializer.data)
+
+
 # class RoomViewSet(viewsets.ReadOnlyModelViewSet):
 class RoomViewSet(viewsets.ModelViewSet):
     queryset = Room.objects.select_related('hotel', 'hotel__city').all()
@@ -58,22 +163,66 @@ class RoomViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         hotel_id = self.kwargs['hotel_pk']
-        return Room.objects.filter(hotel__id=hotel_id)
+        queryset = Room.objects.filter(hotel__id=hotel_id)
+
+        # Читаем параметры запроса
+        check_in = self.request.query_params.get('check_in')
+        check_out = self.request.query_params.get('check_out')
+        guests = self.request.query_params.get('guests')
+
+        # Если параметры не переданы — вернем просто все комнаты отеля
+        if not all([check_in, check_out, guests]):
+            return queryset
+
+        # Если параметры есть — фильтруем
+        try:
+            check_in = datetime.strptime(check_in, "%Y-%m-%d").date()
+            check_out = datetime.strptime(check_out, "%Y-%m-%d").date()
+            guests = int(guests)
+        except ValueError:
+            return queryset.none()
+
+        if check_in >= check_out:
+            return queryset.none()
+
+        overlapping_bookings = Booking.objects.filter(
+            room=OuterRef('pk'),
+            start_date__lt=check_out,
+            end_date__gt=check_in
+        )
+
+        queryset = queryset.annotate(
+            is_booked=Exists(overlapping_bookings)
+        ).filter(
+            is_booked=False,
+            capacity__gte=guests
+        )
+
+        return queryset
 
 
 class CityListView(ListAPIView):
     queryset = City.objects.select_related('country').all()
     serializer_class = CitySerializer
+    filter_backends = (filters.SearchFilter,)
+    search_fields = ('name', "country__name")
 
 
 class BookingViewSet(viewsets.ModelViewSet):
     queryset = Booking.objects.all()
-    serializer_class = BookingSerializer
+
     permission_classes = [
         permissions.IsAuthenticated,
         IsNotBlocked,
         IsOwnerOrAdminForBooking
     ]
+
+    # serializer_class = BookingSerializer
+
+    def get_serializer_class(self):
+        if self.action in ['create', 'update', 'partial_update']:
+            return BookingCreateSerializer
+        return BookingSerializer
 
     def get_queryset(self):
         user = self.request.user
@@ -170,7 +319,7 @@ class RouletteView(views.APIView):
             expires_at__gt=timezone.now()
         ).exists():
             return Response(
-                {"detail": "У вас уже есть активная скидка."},
+                {"detail": "У вас уже есть активная скидка!"},
                 status=status.HTTP_400_BAD_REQUEST
             )
 

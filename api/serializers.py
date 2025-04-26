@@ -51,8 +51,8 @@ class CitySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = City
-        fields = ('name', 'country')
-        # read_only_fields = ('id',)
+        fields = ('id', 'name', 'country')
+        read_only_fields = ('id',)
 
 
 class Base64ImageField(serializers.ImageField):
@@ -121,23 +121,72 @@ class RoomSerializer(serializers.ModelSerializer):
         read_only_fields = ('id',)  # Эти поля нельзя изменять напрямую
 
 
+class RoomShortSerializer(serializers.ModelSerializer):
+    hotel = serializers.PrimaryKeyRelatedField(read_only=True)
+
+    class Meta:
+        model = Room
+        fields = ['id', 'hotel']
+
+
+# для чтения
 class BookingSerializer(serializers.ModelSerializer):
+    # room = serializers.PrimaryKeyRelatedField(queryset=Room.objects.all())
+    room = RoomShortSerializer(read_only=True)
+
+    # total_price = serializers.SerializerMethodField()
+
+    email = serializers.SerializerMethodField()
+
+    has_review = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Booking
+        fields = [
+            'id',
+            'room',
+            'start_date',
+            'end_date',
+            'guests',
+            'first_name',
+            'last_name',
+            'email',
+            'phone',
+            'discount_applied',
+            'total_price',
+            'status',
+            'created_at',
+            'has_review',
+        ]
+        read_only_fields = ['created_at']
+
+    # Поле email не хранится в модели, берется из связанного пользователя
+    def get_email(self, obj):
+        return obj.user.email if obj.user else None
+
+    # def get_total_price(self, obj):
+    #     return obj.total_price
+
+    def get_has_review(self, obj):
+        return hasattr(obj, 'review')
+
+
+# для создания бронирования
+class BookingCreateSerializer(serializers.ModelSerializer):
     room = serializers.PrimaryKeyRelatedField(queryset=Room.objects.all())
-    # discount_applied = serializers.DecimalField(
-    #     max_digits=5,
-    #     decimal_places=2,
-    #     read_only=True
-    # )
+
     discount_applied = serializers.BooleanField(read_only=True)
 
-    # final_price = serializers.DecimalField(
-    #     max_digits=10,
-    #     decimal_places=2,
-    #     read_only=True
-    # )
     total_price = serializers.SerializerMethodField()
 
     email = serializers.SerializerMethodField()
+
+    # Поле email не хранится в модели, берется из связанного пользователя
+    def get_email(self, obj):
+        return obj.user.email if obj.user else None
+
+    def get_total_price(self, obj):
+        return obj.total_price
 
     class Meta:
         model = Booking
@@ -158,13 +207,6 @@ class BookingSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['created_at']
 
-    # Поле email не хранится в модели, берется из связанного пользователя
-    def get_email(self, obj):
-        return obj.user.email if obj.user else None
-
-    def get_total_price(self, obj):
-        return obj.total_price
-
     def validate(self, data):
         request = self.context.get('request')
 
@@ -178,8 +220,7 @@ class BookingSerializer(serializers.ModelSerializer):
 
             return data
 
-
-        # Пример базовой валидации (не наезжают ли даты друг на друга)
+        #  Пример базовой валидации (не наезжают ли даты друг на друга)
         room = data['room']
         start = data['start_date']
         end = data['end_date']
@@ -199,16 +240,6 @@ class BookingSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Комната занята на выбранные даты.")
 
         return data
-
-
-# Сериализатор для отзыва
-# class ReviewSerializer(serializers.ModelSerializer):
-#     user = UserSerializer()
-#     hotel = HotelSerializer()
-
-#     class Meta:
-#         model = Review
-#         fields = ('id', 'user', 'hotel', 'text', 'rating', 'created_at')
 
 
 class ReviewSerializer(serializers.ModelSerializer):

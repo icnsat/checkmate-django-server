@@ -165,6 +165,9 @@ SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
     'SIGNING_KEY': os.getenv('SECRET_KEY'),
+
+    # Кастомный сериализатор
+    'TOKEN_OBTAIN_SERIALIZER': 'api.jwt_utils.CustomTokenObtainPairSerializer'
 }
 
 # Настройки Djoser

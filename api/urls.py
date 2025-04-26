@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 from rest_framework_nested import routers
 from .views import (
     HotelViewSet,
+    SearchHotelsView,
     RoomViewSet,
     CityListView,
     BookingViewSet,
@@ -30,6 +31,11 @@ urlpatterns = [
     path('', include(hotel_router.urls)),  # Вложенные роутеры
 
     path('cities/', CityListView.as_view(), name='city-list'),
+    path(
+        'search/',
+        SearchHotelsView.as_view(),
+        name='search-hotels'
+    ),
     # path('hotels/', views.HotelListView.as_view(), name='hotel-list'),
     # path('hotels/<int:pk>/', views.HotelDetailView.as_view(), name='hotel-detail'),
     # path('hotels/<int:hotel_id>/rooms/', views.RoomListView.as_view(), name='room-list'),
@@ -45,4 +51,3 @@ urlpatterns = [
         name='roulette-discount'
     ),
 ]
-
