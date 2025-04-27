@@ -211,12 +211,19 @@ class CityListView(ListAPIView):
 class BookingViewSet(viewsets.ModelViewSet):
     queryset = Booking.objects.all()
 
-    permission_classes = [
-        permissions.IsAuthenticated,
-        IsNotBlocked,
-        IsOwnerOrAdminForBooking
-    ]
+    # permission_classes = [
+    #     permissions.IsAuthenticated,
+    #     IsNotBlocked,
+    #     IsOwnerOrAdminForBooking
+    # ]
 
+    def get_permission_classes(self):
+        if self.action == 'get':
+            return [permissions.IsAuthenticated, IsOwnerOrAdminForBooking]
+        else:
+            return [permissions.IsAuthenticated,
+                    IsNotBlocked,
+                    IsOwnerOrAdminForBooking]
     # serializer_class = BookingSerializer
 
     def get_serializer_class(self):
@@ -306,22 +313,50 @@ class RouletteView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
-        """Выбор случайной скидки."""
-
-        # Параметры скидки
-        discount_amount = randint(5, 30)  # Скидка от 5 до 30 процентов
-        expires_at = timezone.now() + timedelta(days=1)  # Срок действия скидки — 1 день
-
-        # Проверка, что у пользователя еще нет активной скидки
-        if Discount.objects.filter(
+        """Проверка наличия активной скидки без создания новой."""
+        existing_discount = Discount.objects.filter(
             user=request.user,
             used=False,
             expires_at__gt=timezone.now()
-        ).exists():
+        ).first()
+
+        if existing_discount:
             return Response(
-                {"detail": "У вас уже есть активная скидка!"},
+                {
+                    "detail": "У вас уже есть активная скидка: ",
+                    "discount_code": existing_discount.id,
+                    "discount_amount": existing_discount.amount,
+                    "expires_at": existing_discount.expires_at
+                },
+                status=status.HTTP_200_OK
+            )
+
+        return Response(
+            {"detail": "У вас нет активной скидки."},
+            status=status.HTTP_204_NO_CONTENT
+        )
+
+    def post(self, request, *args, **kwargs):
+        """Создание новой скидки (если нет активной)."""
+        existing_discount = Discount.objects.filter(
+            user=request.user,
+            used=False,
+            expires_at__gt=timezone.now()
+        ).first()
+
+        if existing_discount:
+            return Response(
+                {"detail": "У вас уже есть активная скидка: ",
+                 "discount_code": existing_discount.id,
+                 "discount_amount": existing_discount.amount,
+                 "expires_at": existing_discount.expires_at
+                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        # Параметры новой скидки
+        discount_amount = randint(5, 30)  # Скидка от 5 до 30 процентов
+        expires_at = timezone.now() + timedelta(days=1)  # Срок действия скидки — 1 день
 
         # Создаем скидку
         discount = Discount.objects.create(
@@ -334,7 +369,7 @@ class RouletteView(views.APIView):
             {"discount_code": discount.id,
              "discount_amount": discount.amount,
              "expires_at": discount.expires_at},
-            status=status.HTTP_200_OK
+            status=status.HTTP_201_CREATED
         )
 
 

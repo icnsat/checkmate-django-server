@@ -19,7 +19,7 @@ class UserCreateSerializer(BaseUserCreateSerializer):
 class UserSerializer(BaseUserSerializer):
     class Meta(BaseUserSerializer.Meta):
         model = User
-        fields = ('id', 'email', 'username')
+        fields = ('id', 'email', 'username', 'is_blocked')
 
 
 class UserAdminSerializer(BaseUserSerializer):
@@ -123,10 +123,12 @@ class RoomSerializer(serializers.ModelSerializer):
 
 class RoomShortSerializer(serializers.ModelSerializer):
     hotel = serializers.PrimaryKeyRelatedField(read_only=True)
+    image = serializers.ImageField(read_only=True)  # добавляем поле image
+    room_type = serializers.CharField(read_only=True)
 
     class Meta:
         model = Room
-        fields = ['id', 'hotel']
+        fields = ['id', 'hotel', 'image', 'room_type']
 
 
 # для чтения

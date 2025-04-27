@@ -36,6 +36,11 @@ urlpatterns = [
         SearchHotelsView.as_view(),
         name='search-hotels'
     ),
+    # path(
+    #     'search/rooms',
+    #     SearchRoomsView.as_view(),
+    #     name='search-rooms'
+    # ),
     # path('hotels/', views.HotelListView.as_view(), name='hotel-list'),
     # path('hotels/<int:pk>/', views.HotelDetailView.as_view(), name='hotel-detail'),
     # path('hotels/<int:hotel_id>/rooms/', views.RoomListView.as_view(), name='room-list'),
