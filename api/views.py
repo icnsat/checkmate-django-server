@@ -233,6 +233,11 @@ class BookingViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+
+        # Return empty queryset for anonymous users
+        if not user.is_authenticated:
+            return Booking.objects.none()
+
         # Админ видит всё
         if user.is_superuser:
             return Booking.objects.all()
